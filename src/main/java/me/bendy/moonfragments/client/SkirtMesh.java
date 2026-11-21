@@ -20,8 +20,9 @@ import net.minecraft.util.Mth;
  * forward the vertex sits. The front and back follow the legs exactly, so the legs stay inside, and the sides fan
  * smoothly between them, so the skirt never splits open.
  * <p>
- * {@link ModelPart} is final, so the mesh lives in a pool of blank cubes whose polygon slots are rewritten each frame;
- * unused slots get a zero-size polygon that draws nothing.
+ * The rest-pose quads (corners, UVs, ring depths, outward directions) are computed once; each frame only turns the
+ * corners, and nothing is rebuilt while the leg angles are unchanged. {@link ModelPart} is final, so the mesh lives in
+ * a pool of blank cubes whose polygon slots are rewritten; unused slots get a zero-size polygon that draws nothing.
  */
 public final class SkirtMesh {
     /** Legs (and the skirt) pivot on this line, in body pixels. */
@@ -37,28 +38,47 @@ public final class SkirtMesh {
 
     /**
      * The whole skirt. If {@code startHx > 0}, a ledge joins a fixed-size ring ({@code startHx}, {@code startHz}) at the
-     * first band's top to the first band (e.g. the mini skirt's flare out from its upper tier).
+     * first band's top to the first band (e.g. closing the gap between a bodice or upper tier and a wider skirt).
      */
     public record Spec(float startHx, float startHz, List<Band> bands, int frontSegments, int sideSegments,
             int textureWidth, int textureHeight) {
     }
 
+    /**
+     * One rest-pose quad: corners {@code (x, y, z)} in body pixels, normalized UVs, each corner's ring half-depth (for
+     * blending the swing), and its outward direction (to orient the normal).
+     */
+    private record Quad(float[][] corners, float[][] uvs, float[] hz, Vector3f outward) {
+    }
+
     private static final ModelPart.Polygon EMPTY = new ModelPart.Polygon(new ModelPart.Vertex[] {
             new ModelPart.Vertex(0, 0, 0, 0, 0), new ModelPart.Vertex(0, 0, 0, 0, 0),
             new ModelPart.Vertex(0, 0, 0, 0, 0), new ModelPart.Vertex(0, 0, 0, 0, 0)}, new Vector3f(0, 1, 0));
+    /** Model space has y pointing down, so "up" is -y. */
+    private static final Vector3f UP = new Vector3f(0, -1, 0);
+    private static final Vector3f[] FACE_OUTWARD = {
+            new Vector3f(0, 0, -1), new Vector3f(1, 0, 0), new Vector3f(0, 0, 1), new Vector3f(-1, 0, 0)};
 
-    private final Spec spec;
+    private final List<Quad> quads;
     private final List<ModelPart.Cube> cubes = new ArrayList<>();
     private final ModelPart part;
-    private int slot;
+    private float lastFront = Float.NaN;
+    private float lastBack = Float.NaN;
+
+    // Per-frame scratch, reused to avoid allocation.
+    private final Vector3f[] turned = {new Vector3f(), new Vector3f(), new Vector3f(), new Vector3f()};
+    private final Vector3f edgeB = new Vector3f();
+    private final Vector3f expected = new Vector3f();
 
     public SkirtMesh(Spec spec) {
-        this.spec = spec;
-        int segments = 2 * spec.frontSegments() + 2 * spec.sideSegments();
-        int strips = spec.bands().size() * 2 + 1; // each band, plus at most one ledge above each
-        int cubesNeeded = (segments * strips + 5) / 6;
+        this.quads = buildQuads(spec);
+        int cubesNeeded = (quads.size() + 5) / 6;
         for (int i = 0; i < cubesNeeded; i++) {
             cubes.add(new ModelPart.Cube(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 1, 1, EnumSet.allOf(Direction.class)));
+        }
+        // Blank the slots the mesh doesn't use; they are never touched again.
+        for (int slot = quads.size(); slot < cubes.size() * 6; slot++) {
+            cubes.get(slot / 6).polygons[slot % 6] = EMPTY;
         }
         this.part = new ModelPart(cubes, Map.of());
     }
@@ -68,42 +88,70 @@ public final class SkirtMesh {
     }
 
     /**
-     * Rebuilds the mesh for this frame.
+     * Updates the mesh for this frame. Does nothing if the leg angles haven't changed since the last call.
      * @param front swing of the forward-most leg (negative = forward), radians
      * @param back swing of the rear-most leg (positive = back), radians
      */
     public void update(float front, float back) {
-        slot = 0;
+        if (front == lastFront && back == lastBack) {
+            return;
+        }
+        lastFront = front;
+        lastBack = back;
+        for (int slot = 0; slot < quads.size(); slot++) {
+            cubes.get(slot / 6).polygons[slot % 6] = turnQuad(quads.get(slot), front, back);
+        }
+    }
+
+    private ModelPart.Polygon turnQuad(Quad quad, float front, float back) {
+        float angleSum = 0;
+        for (int i = 0; i < 4; i++) {
+            float[] c = quad.corners()[i];
+            float angle = angleAt(c[2], quad.hz()[i], front, back);
+            angleSum += angle;
+            turn(c[0], c[1], c[2], angle, turned[i]);
+        }
+        // Normal from the turned quad, pointing the same way as the rest-pose outward direction turned with it.
+        // (Each polygon keeps its own normal, so this one vector is allocated per quad.)
+        Vector3f normal =new Vector3f(turned[2]).sub(turned[0]).cross(edgeB.set(turned[3]).sub(turned[1]));
+        turnDirection(quad.outward(), angleSum / 4, expected);
+        if (normal.lengthSquared() < 1.0E-8F) {
+            normal.set(expected);
+        } else {
+            normal.normalize();
+            if (normal.dot(expected) < 0) {
+                normal.negate();
+            }
+        }
+        ModelPart.Vertex[] vertices = new ModelPart.Vertex[4];
+        for (int i = 0; i < 4; i++) {
+            Vector3f p = turned[i];
+            vertices[i] = new ModelPart.Vertex(p.x, p.y, p.z, quad.uvs()[i][0], quad.uvs()[i][1]);
+        }
+        return new ModelPart.Polygon(vertices, normal);
+    }
+
+    // ---- Rest-pose construction (once per garment) ----
+
+    private static List<Quad> buildQuads(Spec spec) {
+        List<Quad> quads = new ArrayList<>();
         int nF = spec.frontSegments();
         int nS = spec.sideSegments();
-        float[][] previousBottom = null;
+        float[][] previousRing = null;
         Band previous = null;
-        for (int b = 0; b < spec.bands().size(); b++) {
-            Band band = spec.bands().get(b);
-            float[][] top = ring(band.hx(), band.hz(), band.pleat(), nF, nS);
-            float[][] bottom = top; // same outline top and bottom
-            // Ledge from the ring above (previous band's bottom, or the fixed start ring) out to this band.
-            float[][] inner = null;
-            float innerHz = 0;
+        for (Band band : spec.bands()) {
+            float[][] ring = ring(band.hx(), band.hz(), band.pleat(), nF, nS);
+            // Ledge from the ring above (previous band, or the fixed start ring) out to this band.
             if (previous != null && (previous.hx() != band.hx() || previous.hz() != band.hz())) {
-                inner = previousBottom;
-                innerHz = previous.hz();
+                addLedge(quads, spec, previousRing, previous.hz(), ring, band);
             } else if (previous == null && spec.startHx() > 0) {
-                inner = ring(spec.startHx(), spec.startHz(), 0, nF, nS);
-                innerHz = spec.startHz();
+                addLedge(quads, spec, ring(spec.startHx(), spec.startHz(), 0, nF, nS), spec.startHz(), ring, band);
             }
-            if (inner != null) {
-                addLedge(inner, innerHz, top, band, front, back);
-            }
-            addBand(top, bottom, band, front, back);
+            addBand(quads, spec, ring, band);
             previous = band;
-            previousBottom = bottom;
+            previousRing = ring;
         }
-        // Blank out the rest of the pool.
-        int total = cubes.size() * 6;
-        while (slot < total) {
-            put(EMPTY);
-        }
+        return quads;
     }
 
     /** Outline points (x, z, faceIndex) around a rectangle, starting front-left, going round via +x, back, -x. */
@@ -129,25 +177,23 @@ public final class SkirtMesh {
         return points;
     }
 
-    private void addBand(float[][] top, float[][] bottom, Band band, float front, float back) {
+    private static void addBand(List<Quad> quads, Spec spec, float[][] ring, Band band) {
         float w = 2 * band.hx();
         float d = 2 * band.hz();
         float h = band.yBottom() - band.yTop();
-        int n = top.length;
+        int n = ring.length;
         for (int k = 0; k < n; k++) {
-            float[] a = top[k];
-            float[] c = top[(k + 1) % n];
-            float[] cb = bottom[(k + 1) % n];
-            float[] ab = bottom[k];
+            float[] a = ring[k];
+            float[] c = ring[(k + 1) % n];
             int face = (int) a[2];
-            float[][] verts = {
+            float[][] corners = {
                     {a[0], band.yTop(), a[1]}, {c[0], band.yTop(), c[1]},
-                    {cb[0], band.yBottom(), cb[1]}, {ab[0], band.yBottom(), ab[1]}};
-            float[][] uv = new float[4][];
+                    {c[0], band.yBottom(), c[1]}, {a[0], band.yBottom(), a[1]}};
+            float[][] uvs = new float[4][];
             for (int i = 0; i < 4; i++) {
-                float x = verts[i][0];
-                float z = verts[i][2];
-                // For the shared corner point, use the edge this segment belongs to.
+                float x = corners[i][0];
+                float z = corners[i][2];
+                // The shared corner point uses the edge this segment belongs to.
                 float u = switch (face) {
                     case 0 -> band.u() + d + Mth.clamp(x + band.hx(), 0, w);
                     case 1 -> band.u() + d + w + Mth.clamp(z + band.hz(), 0, d);
@@ -155,20 +201,14 @@ public final class SkirtMesh {
                     default -> band.u() + Mth.clamp(band.hz() - z, 0, d);
                 };
                 float v = band.v() + d + (i < 2 ? 0 : h);
-                uv[i] = new float[] {u, v};
+                uvs[i] = new float[] {u / spec.textureWidth(), v / spec.textureHeight()};
             }
-            Vector3f outward = switch (face) {
-                case 0 -> new Vector3f(0, 0, -1);
-                case 1 -> new Vector3f(1, 0, 0);
-                case 2 -> new Vector3f(0, 0, 1);
-                default -> new Vector3f(-1, 0, 0);
-            };
             float hz = band.hz();
-            emitQuad(verts, uv, new float[] {hz, hz, hz, hz}, outward, front, back);
+            quads.add(new Quad(corners, uvs, new float[] {hz, hz, hz, hz}, FACE_OUTWARD[face]));
         }
     }
 
-    private void addLedge(float[][] inner, float innerHz, float[][] outer, Band band, float front, float back) {
+    private static void addLedge(List<Quad> quads, Spec spec, float[][] inner, float innerHz, float[][] outer, Band band) {
         float w = 2 * band.hx();
         float d = 2 * band.hz();
         float y = band.yTop();
@@ -178,50 +218,19 @@ public final class SkirtMesh {
             float[] i1 = inner[(k + 1) % n];
             float[] o1 = outer[(k + 1) % n];
             float[] o0 = outer[k];
-            float[][] verts = {{i0[0], y, i0[1]}, {i1[0], y, i1[1]}, {o1[0], y, o1[1]}, {o0[0], y, o0[1]}};
-            float[][] uv = new float[4][];
+            float[][] corners = {{i0[0], y, i0[1]}, {i1[0], y, i1[1]}, {o1[0], y, o1[1]}, {o0[0], y, o0[1]}};
+            float[][] uvs = new float[4][];
             for (int i = 0; i < 4; i++) {
-                float u = band.u() + d + Mth.clamp(verts[i][0] + band.hx(), 0, w);
-                float v = band.v() + Mth.clamp(band.hz() - verts[i][2], 0, d);
-                uv[i] = new float[] {u, v};
+                float u = band.u() + d + Mth.clamp(corners[i][0] + band.hx(), 0, w);
+                float v = band.v() + Mth.clamp(band.hz() - corners[i][2], 0, d);
+                uvs[i] = new float[] {u / spec.textureWidth(), v / spec.textureHeight()};
             }
-            // The two rings have different depths; blend by each vertex's own ring. Model y points down, so up is -y.
-            float[] hz = {innerHz, innerHz, band.hz(), band.hz()};
-            emitQuad(verts, uv, hz, new Vector3f(0, -1, 0), front, back);
+            // The two rings have different depths; blend by each corner's own ring.
+            quads.add(new Quad(corners, uvs, new float[] {innerHz, innerHz, band.hz(), band.hz()}, UP));
         }
     }
 
-    /**
-     * Turns the four rest-pose corners about the hip and writes the quad into the next polygon slot.
-     * @param hz each corner's ring half-depth, used to blend between the back and front swing
-     * @param outward the quad's rest-pose outward direction, used to orient the normal
-     */
-    private void emitQuad(float[][] verts, float[][] uv, float[] hz, Vector3f outward, float front, float back) {
-        Vector3f[] p = new Vector3f[4];
-        float angleSum = 0;
-        for (int i = 0; i < 4; i++) {
-            float angle = angleAt(verts[i][2], hz[i], front, back);
-            angleSum += angle;
-            p[i] = turn(verts[i][0], verts[i][1], verts[i][2], angle);
-        }
-        // Normal from the deformed quad, pointing the same way as the rest-pose outward direction turned with it.
-        Vector3f normal = new Vector3f(p[2]).sub(p[0]).cross(new Vector3f(p[3]).sub(p[1]));
-        Vector3f expected = turnDirection(outward, angleSum / 4);
-        if (normal.lengthSquared() < 1.0E-8F) {
-            normal.set(expected);
-        } else {
-            normal.normalize();
-            if (normal.dot(expected) < 0) {
-                normal.negate();
-            }
-        }
-        ModelPart.Vertex[] vertices = new ModelPart.Vertex[4];
-        for (int i = 0; i < 4; i++) {
-            vertices[i] = new ModelPart.Vertex(p[i].x, p[i].y, p[i].z,
-                    uv[i][0] / spec.textureWidth(), uv[i][1] / spec.textureHeight());
-        }
-        put(new ModelPart.Polygon(vertices, normal));
-    }
+    // ---- Geometry helpers ----
 
     /** Back edge (z = +hz) follows {@code back}, front edge (z = -hz) follows {@code front}, blended in between. */
     private static float angleAt(float z, float hz, float front, float back) {
@@ -230,22 +239,17 @@ public final class SkirtMesh {
         return back + (front - back) * t;
     }
 
-    /** Rotates a body-space point about the hip line (x axis through y = HIP_Y, z = 0). */
-    private static Vector3f turn(float x, float y, float z, float angle) {
+    /** Rotates a body-space point about the hip line (x axis through y = HIP_Y, z = 0) into {@code out}. */
+    private static void turn(float x, float y, float z, float angle, Vector3f out) {
         float dy = y - HIP_Y;
         float cos = Mth.cos(angle);
         float sin = Mth.sin(angle);
-        return new Vector3f(x, HIP_Y + dy * cos - z * sin, dy * sin + z * cos);
+        out.set(x, HIP_Y + dy * cos - z * sin, dy * sin + z * cos);
     }
 
-    private static Vector3f turnDirection(Vector3f dir, float angle) {
+    private static void turnDirection(Vector3f dir, float angle, Vector3f out) {
         float cos = Mth.cos(angle);
         float sin = Mth.sin(angle);
-        return new Vector3f(dir.x, dir.y * cos - dir.z * sin, dir.y * sin + dir.z * cos);
-    }
-
-    private void put(ModelPart.Polygon polygon) {
-        cubes.get(slot / 6).polygons[slot % 6] = polygon;
-        slot++;
+        out.set(dir.x, dir.y * cos - dir.z * sin, dir.y * sin + dir.z * cos);
     }
 }
