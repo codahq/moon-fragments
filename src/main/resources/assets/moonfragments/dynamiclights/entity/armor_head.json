@@ -1,0 +1,9 @@
+{
+  "match": {
+    "type": "#moonfragments:armor_wearers",
+    "equipment": {
+      "head": { "items": "moonfragments:moon_fragment_helmet" }
+    }
+  },
+  "luminance": 7
+}

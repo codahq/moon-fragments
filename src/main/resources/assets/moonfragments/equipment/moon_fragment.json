@@ -1,0 +1,14 @@
+{
+  "layers": {
+    "humanoid": [
+      {
+        "texture": "moonfragments:moon_fragment"
+      }
+    ],
+    "humanoid_leggings": [
+      {
+        "texture": "moonfragments:moon_fragment"
+      }
+    ]
+  }
+}

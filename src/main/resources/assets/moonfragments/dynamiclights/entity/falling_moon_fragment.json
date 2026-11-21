@@ -1,0 +1,6 @@
+{
+  "match": {
+    "type": "moonfragments:falling_moon_fragment"
+  },
+  "luminance": 15
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/spear_in_hand",
+  "textures": {
+    "layer0": "moonfragments:item/moon_fragment_spear_in_hand"
+  }
+}

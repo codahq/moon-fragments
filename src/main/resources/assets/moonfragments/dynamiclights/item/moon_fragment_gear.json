@@ -1,0 +1,19 @@
+{
+  "match": {
+    "items": [
+      "moonfragments:moon_fragment_sword",
+      "moonfragments:moon_fragment_spear",
+      "moonfragments:moon_fragment_shovel",
+      "moonfragments:moon_fragment_pickaxe",
+      "moonfragments:moon_fragment_axe",
+      "moonfragments:moon_fragment_hoe",
+      "moonfragments:moon_fragment_helmet",
+      "moonfragments:moon_fragment_chestplate",
+      "moonfragments:moon_fragment_leggings",
+      "moonfragments:moon_fragment_dress",
+      "moonfragments:moon_fragment_skirt",
+      "moonfragments:moon_fragment_boots"
+    ]
+  },
+  "luminance": 9
+}

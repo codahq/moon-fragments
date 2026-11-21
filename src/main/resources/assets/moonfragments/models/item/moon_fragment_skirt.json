@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "moonfragments:item/moon_fragment_skirt"
+  }
+}

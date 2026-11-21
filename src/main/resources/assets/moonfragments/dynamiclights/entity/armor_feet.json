@@ -1,0 +1,9 @@
+{
+  "match": {
+    "type": "#moonfragments:armor_wearers",
+    "equipment": {
+      "feet": { "items": "moonfragments:moon_fragment_boots" }
+    }
+  },
+  "luminance": 7
+}
