@@ -1,0 +1,120 @@
+# Moon Fragments — NeoForge 1.21.11 mod
+
+Requirements live in the GitHub issues of `codahq/moon-fragments`.
+
+## Toolchain
+
+This workstation's system `JAVA_HOME` is **Java 8**. Never change the system JAVA_HOME or PATH. Java 21 is pinned per project:
+
+- JDK 21: `C:\Program Files\Eclipse Adoptium\jdk-21.0.4.7-hotspot`
+- `gradle.properties`: `org.gradle.java.home=C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.4.7-hotspot` (doubled backslashes), `org.gradle.jvmargs=-Xmx3G`. This is the fix for "Gradle requires JVM 17 or later".
+- `build.gradle`: `java.toolchain.languageVersion = JavaLanguageVersion.of(21)`, ModDevGradle `net.neoforged.moddev` 2.0.148.
+- `settings.gradle`: `gradlePluginPortal()` + `org.gradle.toolchains.foojay-resolver-convention` 1.0.0.
+- Wrapper: Gradle 9.2.1. Always build with `./gradlew`, never a system gradle.
+- VS Code: `.vscode/settings.json` (gitignored, machine-local) sets `"java.import.gradle.java.home"` to the JDK 21 path and `"java.gradle.buildServer.enabled": false`. The Java extension imports with its own JVM, and the build server kept importing on Java 8. Reload the window after changing it.
+- Verify: `./gradlew --version` shows `Daemon JVM: ...jdk-21...` (the launcher may still say 1.8; that's fine). If an old daemon is on Java 8, run `./gradlew --stop` once. Then `./gradlew compileJava`.
+- Versions: Minecraft 1.21.11, NeoForge 21.11.48, Parchment 2025.12.20.
+
+## Design decisions (from the user, 2026-11-20)
+
+- **Falling fragment (#1):** a custom entity (not an item entity or block). It falls only at night and spawns high in the air near a player, in a loaded chunk, on a natural world-gen solid block (dirt, stone, sand…, never trees). It never lands inside a village structure bounding box or within 15 blocks of one.
+- **Spawn rate (#1):** per player. Each tick there's a random roll tuned to average about 4 per player per night, so it's stateless and can occasionally exceed 4. Fairly even spread across the night.
+- **Impact (#1):** no beacon while falling. On landing: TNT-style vanilla effects including damage. Block damage respects the `mobGriefing` gamerule, plus a config option to turn it off even when mobGriefing is on.
+- **Beacon state (#1):** after it settles, shows as a ball of light with a white beacon beam. If no player comes within 15 blocks by sunrise, it despawns.
+- **Fragment state (#1):** when a player comes within 15 blocks, the beacon is replaced by the collectible half-sphere fragment (bluish-white, glowing, 3D model on the ground and in inventory). It may settle or roll a little as it converts. Once it's day, it disappears after 30 seconds of daylight (a vanilla-particle poof is fine).
+- **Impact config:** separate config toggles for block damage and entity damage (block damage also gated by `mobGriefing`). Both default to **off**. Impacts are non-destructive out of the box, and players opt in via the config.
+- **Visibility/pickup:** fragments are shared. Every player sees them and anyone can collect them. Pick up by right-clicking.
+- **Showers (#4):** about once every 5 Minecraft days (stateless per-night roll), 15–20 fragments fall across the whole world, not per player. Usually centred on the highest concentration of players, but by chance a solo player can still be picked. Showers are in addition to the normal per-player events.
+- **Gear (#2):** vanilla crafting shapes, crafted directly (no smithing upgrade), with the fragment taking the place of the ingot. Durability equals netherite; damage, armor and mining effectiveness sit between diamond and netherite. Enchantability is the highest in the game, matching gold (tools 22, armor 25). Fire resistant like netherite. All items are bluish-white and glow. Custom models per #2.
+- **Dress:** `moon_fragment_dress` is identical to the leggings except for its worn model (bodice, short puffed sleeves, three-tier skirt to below the knee, `GarmentModel.createDress`). Recipe `.X. / XXX / XXX` (same 7 fragments).
+- **Mini skirt:** `moon_fragment_skirt` is identical to the leggings except for its worn model (`GarmentModel.createSkirt`): a high waistband and a strongly flared, pleated two-tier skirt ending at the top of the thigh, clear of the hip-high boots. Recipe `XXX / XXX / .X.`.
+- **Bendable skirts (`SkirtMesh`):** below the hip, the dress and skirt are one connected mesh rebuilt each frame. Each vertex turns about the hip line by an angle blended from the rear leg's swing (back edge) to the forward leg's (front edge), so legs stay inside and the sides fan with no gap. `ModelPart` is final, so the mesh is written into a pool of blank cubes' polygon slots.
+  - Rejected 1: stretching tiers looked like a box ("igloo cooler").
+  - Rejected 2: rigid front/back hinged panels split open at the sides.
+- **Enchantments:** Shrinksh (-10% `minecraft:scale`) and Growge (+10%). Armor only, one level each. Each armor slot adds its own modifier, so four pieces give ±40% and mixed pieces cancel. Both can't go on the same piece.
+- **Lighting (#3):** LambDynamicLights as an optional client dependency, never bundled (its license forbids it). JSON in `assets/moonfragments/dynamiclights/`:
+  - Item files: fragment 12, gear 9. These cover held items, dropped items and item frames.
+  - Entity files: falling fragment 15, and worn armor 7 per slot via `equipment` predicates on players, armor stands and armor-wearing mobs.
+  - Dev runs load it via `localRuntime` from Modrinth maven; the version is `lambdynamiclights_version` in gradle.properties.
+  - The fragment item model is also full-bright (`light_emission`).
+
+## Art, models & sounds
+
+Claude can and does generate this mod's art and models. Use these methods, and review the output before calling it done.
+
+### Textures (item, block, GUI PNGs)
+
+- Generate with inline PowerShell + System.Drawing, run once through the shell. No generator script left in the repo, no Python.
+  ```
+  Add-Type -AssemblyName System.Drawing
+  $bmp = New-Object System.Drawing.Bitmap -ArgumentList 16,16      # new 32bpp bitmap starts fully transparent
+  $bmp.SetPixel($x, $y, [System.Drawing.Color]::FromArgb($a,$r,$g,$b))
+  $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+  ```
+- Item/block textures: 16x16 RGBA PNGs under `assets/moonfragments/textures/item/` or `textures/block/`.
+- GUI backgrounds: panel painted top-left on a 256x256 sheet under `assets/moonfragments/textures/gui/`, with recessed slot wells baked at the slot positions (x = 8 + col*18; container rows y = 18 + row*18; player inventory y = 85 + row*18; hotbar y = 143).
+- PowerShell gotcha: never put arithmetic inside an array literal (`@(8 + $col * 18, ...)` mis-parses). Compute into a variable first.
+- Pixel art is deliberate: small palette (outline, dark, mid, light, highlight), lit from the top-left, shaded by hand, not gradients.
+- Once the user has hand-edited a PNG, that PNG is the source. Never regenerate over it.
+
+### Reviewing art (required)
+
+- Upscale a sprite nearest-neighbour into a temporary 256x256 (Graphics with `InterpolationMode = NearestNeighbor`, `PixelOffsetMode = Half`, `DrawImage`), save it to a temp or gitignored folder, Read it, fix what looks wrong, repeat until it reads well.
+- In-game results: screenshots from `./gradlew runClient` land in `run/screenshots/` in this repo. Glob for the newest and Read them. The user won't attach them.
+
+### Models (hand-written JSON)
+
+- Flat items: `models/item/<name>.json` with `"parent": "minecraft:item/generated"` and `"textures": { "layer0": "moonfragments:item/<name>" }`.
+- 3D items/blocks: `elements` list of cuboids (from/to in 0-16 px, optional rotation, per-face `uv` and `texture`) plus `display` transforms (gui, ground, fixed, first/third person). Work out geometry first (each part's size and position), then write the JSON.
+- Non-cuboid static shapes: NeoForge's OBJ model loader (write .obj and .mtl by hand) before reaching for a block-entity or special renderer.
+- 1.21.4+ (incl. 1.21.11): every item also needs a client-item definition at `assets/moonfragments/items/<name>.json`, e.g. `{ "model": { "type": "minecraft:model", "model": "moonfragments:item/<name>" } }`. Via datagen if the project uses it (add the item, run datagen), otherwise write the file. Missing → purple-black cube.
+- Check models in game via screenshots in every view: inventory icon, first- and third-person held, on the ground, item frame.
+
+### Sounds
+
+- Convert with ffmpeg to MONO: `ffmpeg -y -i in -ac 1 -q:a 6 out.ogg`; verify `ffprobe -v error -show_entries stream=channels -of default=noprint_wrappers=1 out.ogg` gives `channels=1`. Stereo ignores distance falloff and plays at full volume everywhere.
+
+## GitHub & git
+
+### This repo's identity
+
+- Repo: `codahq/moon-fragments` (`https://github.com/codahq/moon-fragments.git`)
+- Account: **codahq** (chosen by the user on 2026-11-20; this is not a regoconsulting repo)
+- Pinned with `--local` (only `--local` values count; never touch `--global`/`--system`):
+
+  | key                   | value                              |
+  |-----------------------|------------------------------------|
+  | `user.name`           | `codahq`                           |
+  | `user.email`          | `codahq@users.noreply.github.com`  |
+  | `credential.username` | `codahq`                           |
+
+- Check all three before the first git/gh action of a session and again before every commit:
+  `git config --local --get user.name`, `git config --local --get user.email`, `git config --local --get credential.username`.
+  Set only what is missing or wrong, and report what changed.
+
+### gh CLI
+
+- Both accounts (codahq, brimmasch) are in the keyring, and another VS Code window may switch the active one at any time. Always chain the switch with the command in one invocation and pass the repo explicitly:
+  `gh auth switch --user codahq && gh issue view 12 -R codahq/moon-fragments`
+- "Could not resolve to a Repository" means the wrong account is active.
+- Never modify the gh or Windows credential store (no `gh auth login --with-token`, no manual token edits).
+
+### Commits
+
+- Commit only when the user explicitly says so in the current message. Never push unless asked.
+- No `Co-Authored-By: Claude` or any Claude/AI attribution in commits, PRs or issues.
+- Reorganizations and renames get their own commits, separate from behaviour changes.
+- If a commit lands under the wrong author, re-author the unpushed commits before any push.
+
+### Issues are the tracker
+
+- When committing work tied to an issue, update that issue with implementation notes (what changed, why, commit SHA) in the same step:
+  - staying open: `gh issue comment <n> -R codahq/moon-fragments -F <file>` (or `-b "..."`)
+  - closing: `gh issue close <n> -R codahq/moon-fragments -c "..."`. `gh issue close` has no `-F`, so for a long note run `gh issue comment -F` first, then `gh issue close`.
+- Close an issue only when the user says so.
+- In issue/PR text, write a bare `@name` only for a real login you mean to notify; put placeholders and code in backticks.
+
+### Shell hygiene for git/gh
+
+- One bare command per call: no pipes, `&&`, `;`, `2>&1`, or prepended `cd`. The only exception is the `gh auth switch --user … && gh …` chain.
+- Use the editor's file tools, not the shell, to read and write files.
