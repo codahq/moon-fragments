@@ -1,9 +1,9 @@
-package com.codahq.moonfragments.registry;
+package me.bendy.moonfragments.registry;
 
 import java.util.function.Supplier;
 
-import com.codahq.moonfragments.MoonFragments;
-import com.codahq.moonfragments.spawn.MoonShowers;
+import me.bendy.moonfragments.MoonFragments;
+import me.bendy.moonfragments.spawn.MoonShowers;
 
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.attachment.AttachmentType;

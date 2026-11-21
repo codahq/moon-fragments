@@ -1,4 +1,4 @@
-package com.codahq.moonfragments.util;
+package me.bendy.moonfragments.util;
 
 import net.minecraft.world.level.Level;
 

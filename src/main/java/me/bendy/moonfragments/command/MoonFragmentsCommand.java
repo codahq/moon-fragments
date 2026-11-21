@@ -1,8 +1,8 @@
-package com.codahq.moonfragments.command;
+package me.bendy.moonfragments.command;
 
-import com.codahq.moonfragments.entity.FallingMoonFragment;
-import com.codahq.moonfragments.spawn.MoonFragmentSpawner;
-import com.codahq.moonfragments.spawn.MoonShowers;
+import me.bendy.moonfragments.entity.FallingMoonFragment;
+import me.bendy.moonfragments.spawn.MoonFragmentSpawner;
+import me.bendy.moonfragments.spawn.MoonShowers;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;

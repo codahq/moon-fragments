@@ -1,10 +1,10 @@
-package com.codahq.moonfragments;
+package me.bendy.moonfragments;
 
-import com.codahq.moonfragments.client.FallingMoonFragmentRenderer;
-import com.codahq.moonfragments.client.GarmentClientExtensions;
-import com.codahq.moonfragments.client.GarmentModel;
-import com.codahq.moonfragments.registry.ModEntities;
-import com.codahq.moonfragments.registry.ModItems;
+import me.bendy.moonfragments.client.FallingMoonFragmentRenderer;
+import me.bendy.moonfragments.client.GarmentClientExtensions;
+import me.bendy.moonfragments.client.GarmentModel;
+import me.bendy.moonfragments.registry.ModEntities;
+import me.bendy.moonfragments.registry.ModItems;
 import net.neoforged.neoforge.client.extensions.common.RegisterClientExtensionsEvent;
 
 import net.neoforged.api.distmarker.Dist;

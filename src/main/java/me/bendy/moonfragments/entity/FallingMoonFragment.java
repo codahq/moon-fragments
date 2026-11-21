@@ -1,8 +1,8 @@
-package com.codahq.moonfragments.entity;
+package me.bendy.moonfragments.entity;
 
-import com.codahq.moonfragments.Config;
-import com.codahq.moonfragments.registry.ModItems;
-import com.codahq.moonfragments.util.MoonTime;
+import me.bendy.moonfragments.Config;
+import me.bendy.moonfragments.registry.ModItems;
+import me.bendy.moonfragments.util.MoonTime;
 
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.syncher.EntityDataAccessor;

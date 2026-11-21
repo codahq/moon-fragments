@@ -1,13 +1,13 @@
-package com.codahq.moonfragments.registry;
+package me.bendy.moonfragments.registry;
 
-import static com.codahq.moonfragments.registry.ModMaterials.MOON_FRAGMENT_ARMOR;
-import static com.codahq.moonfragments.registry.ModMaterials.MOON_FRAGMENT_TOOL;
+import static me.bendy.moonfragments.registry.ModMaterials.MOON_FRAGMENT_ARMOR;
+import static me.bendy.moonfragments.registry.ModMaterials.MOON_FRAGMENT_TOOL;
 
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
-import com.codahq.moonfragments.MoonFragments;
+import me.bendy.moonfragments.MoonFragments;
 
 import net.minecraft.world.item.AxeItem;
 import net.minecraft.world.item.HoeItem;

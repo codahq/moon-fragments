@@ -1,14 +1,14 @@
-package com.codahq.moonfragments.spawn;
+package me.bendy.moonfragments.spawn;
 
 import java.util.function.Predicate;
 
 import org.jspecify.annotations.Nullable;
 
-import com.codahq.moonfragments.Config;
-import com.codahq.moonfragments.MoonFragments;
-import com.codahq.moonfragments.entity.FallingMoonFragment;
-import com.codahq.moonfragments.registry.ModEntities;
-import com.codahq.moonfragments.util.MoonTime;
+import me.bendy.moonfragments.Config;
+import me.bendy.moonfragments.MoonFragments;
+import me.bendy.moonfragments.entity.FallingMoonFragment;
+import me.bendy.moonfragments.registry.ModEntities;
+import me.bendy.moonfragments.util.MoonTime;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;

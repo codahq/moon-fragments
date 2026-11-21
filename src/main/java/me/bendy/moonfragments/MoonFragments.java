@@ -1,11 +1,11 @@
-package com.codahq.moonfragments;
+package me.bendy.moonfragments;
 
 import org.slf4j.Logger;
 
-import com.codahq.moonfragments.registry.ModAttachments;
-import com.codahq.moonfragments.registry.ModCreativeTabs;
-import com.codahq.moonfragments.registry.ModEntities;
-import com.codahq.moonfragments.registry.ModItems;
+import me.bendy.moonfragments.registry.ModAttachments;
+import me.bendy.moonfragments.registry.ModCreativeTabs;
+import me.bendy.moonfragments.registry.ModEntities;
+import me.bendy.moonfragments.registry.ModItems;
 import com.mojang.logging.LogUtils;
 
 import net.neoforged.bus.api.IEventBus;

@@ -1,4 +1,4 @@
-package com.codahq.moonfragments;
+package me.bendy.moonfragments;
 
 import net.neoforged.neoforge.common.ModConfigSpec;
 

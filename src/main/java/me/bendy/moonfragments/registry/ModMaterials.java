@@ -1,9 +1,9 @@
-package com.codahq.moonfragments.registry;
+package me.bendy.moonfragments.registry;
 
 import java.util.EnumMap;
 import java.util.Map;
 
-import com.codahq.moonfragments.MoonFragments;
+import me.bendy.moonfragments.MoonFragments;
 
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;

@@ -1,4 +1,4 @@
-package com.codahq.moonfragments.client;
+package me.bendy.moonfragments.client;
 
 import java.util.ArrayList;
 import java.util.EnumSet;

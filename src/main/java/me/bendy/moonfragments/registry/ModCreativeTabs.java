@@ -1,6 +1,6 @@
-package com.codahq.moonfragments.registry;
+package me.bendy.moonfragments.registry;
 
-import com.codahq.moonfragments.MoonFragments;
+import me.bendy.moonfragments.MoonFragments;
 
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;

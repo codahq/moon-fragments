@@ -1,8 +1,8 @@
-package com.codahq.moonfragments.client;
+package me.bendy.moonfragments.client;
 
-import com.codahq.moonfragments.MoonFragments;
-import com.codahq.moonfragments.entity.FallingMoonFragment;
-import com.codahq.moonfragments.registry.ModItems;
+import me.bendy.moonfragments.MoonFragments;
+import me.bendy.moonfragments.entity.FallingMoonFragment;
+import me.bendy.moonfragments.registry.ModItems;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;

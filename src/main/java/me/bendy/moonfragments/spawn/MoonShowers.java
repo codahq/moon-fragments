@@ -1,4 +1,4 @@
-package com.codahq.moonfragments.spawn;
+package me.bendy.moonfragments.spawn;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -7,9 +7,9 @@ import java.util.UUID;
 
 import org.jspecify.annotations.Nullable;
 
-import com.codahq.moonfragments.Config;
-import com.codahq.moonfragments.registry.ModAttachments;
-import com.codahq.moonfragments.util.MoonTime;
+import me.bendy.moonfragments.Config;
+import me.bendy.moonfragments.registry.ModAttachments;
+import me.bendy.moonfragments.util.MoonTime;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;

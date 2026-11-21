@@ -1,7 +1,7 @@
-package com.codahq.moonfragments.registry;
+package me.bendy.moonfragments.registry;
 
-import com.codahq.moonfragments.MoonFragments;
-import com.codahq.moonfragments.entity.FallingMoonFragment;
+import me.bendy.moonfragments.MoonFragments;
+import me.bendy.moonfragments.entity.FallingMoonFragment;
 
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;

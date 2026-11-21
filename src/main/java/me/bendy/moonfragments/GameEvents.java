@@ -1,8 +1,8 @@
-package com.codahq.moonfragments;
+package me.bendy.moonfragments;
 
-import com.codahq.moonfragments.command.MoonFragmentsCommand;
-import com.codahq.moonfragments.spawn.MoonFragmentSpawner;
-import com.codahq.moonfragments.spawn.MoonShowers;
+import me.bendy.moonfragments.command.MoonFragmentsCommand;
+import me.bendy.moonfragments.spawn.MoonFragmentSpawner;
+import me.bendy.moonfragments.spawn.MoonShowers;
 
 import net.minecraft.server.level.ServerLevel;
 import net.neoforged.bus.api.SubscribeEvent;
