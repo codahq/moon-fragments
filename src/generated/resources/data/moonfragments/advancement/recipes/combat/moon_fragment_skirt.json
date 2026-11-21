@@ -1,0 +1,32 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_moon_fragment": {
+      "conditions": {
+        "items": [
+          {
+            "items": "moonfragments:moon_fragment"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_the_recipe": {
+      "conditions": {
+        "recipe": "moonfragments:moon_fragment_skirt"
+      },
+      "trigger": "minecraft:recipe_unlocked"
+    }
+  },
+  "requirements": [
+    [
+      "has_the_recipe",
+      "has_moon_fragment"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "moonfragments:moon_fragment_skirt"
+    ]
+  }
+}
