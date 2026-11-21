@@ -15,6 +15,8 @@ This workstation's system `JAVA_HOME` is **Java 8**. Never change the system JAV
 - VS Code: `.vscode/settings.json` (gitignored, machine-local) sets `"java.import.gradle.java.home"` to the JDK 21 path and `"java.gradle.buildServer.enabled": false`. The Java extension imports with its own JVM, and the build server kept importing on Java 8. Reload the window after changing it.
 - Verify: `./gradlew --version` shows `Daemon JVM: Compatible with Java 21 ... (from gradle/gradle-daemon-jvm.properties)` (the launcher may still say 1.8; that's fine). If an old daemon is on Java 8, run `./gradlew --stop` once. Then `./gradlew compileJava`.
 - Versions: Minecraft 1.21.11, NeoForge 21.11.48, Parchment 2025.12.20.
+- **VS Code F5 after `./gradlew clean`:** the generated `.vscode/launch.json` reads `@build/moddev/<run>RunProgramArgs.txt` / `VmArgs.txt`, and `clean` deletes them, so F5 stops launching. Regenerate with `./gradlew prepareClientRun prepareServerRun prepareDataRun prepareGameTestServerRun` after any clean.
+- **VS Code F5 loads the mod from `bin/main`** (VS Code's own compile output). After adding a new source/resource folder (e.g. `src/generated/resources`), run **Java: Reload Projects** (or Clean Java Language Server Workspace) so it is copied into `bin/main`. Otherwise F5 runs miss those files while `./gradlew runClient` still works.
 
 ## Data generation
 
