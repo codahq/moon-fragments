@@ -2,6 +2,7 @@ package com.codahq.moonfragments;
 
 import org.slf4j.Logger;
 
+import com.codahq.moonfragments.registry.ModAttachments;
 import com.codahq.moonfragments.registry.ModCreativeTabs;
 import com.codahq.moonfragments.registry.ModEntities;
 import com.codahq.moonfragments.registry.ModItems;
@@ -20,6 +21,7 @@ public class MoonFragments {
     public MoonFragments(IEventBus modEventBus, ModContainer modContainer) {
         ModItems.register(modEventBus);
         ModEntities.register(modEventBus);
+        ModAttachments.register(modEventBus);
         ModCreativeTabs.register(modEventBus);
         modContainer.registerConfig(ModConfig.Type.SERVER, Config.SPEC);
     }

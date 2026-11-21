@@ -3,13 +3,12 @@ package com.codahq.moonfragments.spawn;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.WeakHashMap;
 
 import org.jspecify.annotations.Nullable;
 
 import com.codahq.moonfragments.Config;
+import com.codahq.moonfragments.registry.ModAttachments;
 import com.codahq.moonfragments.util.MoonTime;
 
 import net.minecraft.ChatFormatting;
@@ -25,8 +24,8 @@ import net.minecraft.util.RandomSource;
  * The centre is picked by weighted random: each player's weight is the square of the number of players near them, so
  * crowds are strongly favoured but a lone player can still be chosen.
  * <p>
- * Nothing is saved to disk. The once-per-night roll and any shower in progress live in memory, so a server restart can
- * re-roll the current night or cut a shower short.
+ * Nothing is saved to disk. The once-per-night roll and any shower in progress live in a non-serialized level
+ * attachment ({@link State}), so a server restart can re-roll the current night or cut a shower short.
  */
 public final class MoonShowers {
     /** Players within this many blocks of each other count as one crowd. */
@@ -46,16 +45,15 @@ public final class MoonShowers {
         }
     }
 
-    private static final class LevelState {
+    /** Per-level shower bookkeeping, held in the {@link ModAttachments#SHOWER_STATE} level attachment (not saved). */
+    public static final class State {
         long lastRolledNight = Long.MIN_VALUE;
         final List<Shower> showers = new ArrayList<>();
     }
 
-    private static final Map<ServerLevel, LevelState> STATES = new WeakHashMap<>();
-
     /** Called every server level tick. */
     public static void tick(ServerLevel level) {
-        LevelState state = STATES.computeIfAbsent(level, l -> new LevelState());
+        State state = level.getData(ModAttachments.SHOWER_STATE);
         long now = level.getGameTime();
 
         if (MoonFragmentSpawner.canFallIn(level) && MoonTime.isNight(level)) {
@@ -110,7 +108,7 @@ public final class MoonShowers {
         int min = Config.SHOWER_MIN_FRAGMENTS.getAsInt();
         int max = Math.max(min, Config.SHOWER_MAX_FRAGMENTS.getAsInt());
         int count = min + level.random.nextInt(max - min + 1);
-        STATES.computeIfAbsent(level, l -> new LevelState()).showers.add(new Shower(center.getUUID(), count, startTick));
+        level.getData(ModAttachments.SHOWER_STATE).showers.add(new Shower(center.getUUID(), count, startTick));
         if (Config.SHOWER_ANNOUNCE.getAsBoolean()) {
             Component message = Component.translatable("message.moonfragments.shower").withStyle(ChatFormatting.AQUA, ChatFormatting.ITALIC);
             for (ServerPlayer player : level.players()) {
