@@ -16,6 +16,11 @@ This workstation's system `JAVA_HOME` is **Java 8**. Never change the system JAV
 - Verify: `./gradlew --version` shows `Daemon JVM: Compatible with Java 21 ... (from gradle/gradle-daemon-jvm.properties)` (the launcher may still say 1.8; that's fine). If an old daemon is on Java 8, run `./gradlew --stop` once. Then `./gradlew compileJava`.
 - Versions: Minecraft 1.21.11, NeoForge 21.11.48, Parchment 2025.12.20.
 
+## Data generation
+
+- Recipes, recipe-unlock advancements, and item/block/entity-type tags are **generated** (`me.bendy.moonfragments.datagen`) into `src/generated/resources/` by `./gradlew runData`. Edit the providers, rerun `runData`, and commit the generated files. Never hand-edit or duplicate them in `src/main/resources` (a duplicate path clashes in the jar).
+- Still hand-written in `src/main/resources`: item models, client item definitions (`items/`), equipment assets, lang, LambDynamicLights JSON, the Shrinksh/Growge enchantments and their tags (data-driven enchantments aren't in the datagen registry lookup).
+
 ## Design decisions (from the user, 2026-11-20)
 
 - **Falling fragment (#1):** a custom entity (not an item entity or block). It falls only at night and spawns high in the air near a player, in a loaded chunk, on a natural world-gen solid block (dirt, stone, sand…, never trees). It never lands inside a village structure bounding box or within 15 blocks of one.
