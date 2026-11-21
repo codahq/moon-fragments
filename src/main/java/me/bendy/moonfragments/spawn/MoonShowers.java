@@ -32,16 +32,41 @@ public final class MoonShowers {
     private static final double CROWD_RADIUS = 128.0;
     private static final int MIN_GAP_TICKS = 20;
     private static final int MAX_GAP_TICKS = 80;
+    /**
+     * Average gap of the natural pacing (1–4 s, so 2.5 s). {@code /moonfragments shower <count>} takes as long as that
+     * many fragments take on average: {@code count} × this, capped at {@link #MAX_DURATION_SECONDS}.
+     */
+    public static final int AVERAGE_GAP_TICKS = (MIN_GAP_TICKS + MAX_GAP_TICKS) / 2;
+    /** Command caps: a shower lasts at most this long… */
+    public static final int MAX_DURATION_SECONDS = 10 * 60;
+    /** …and drops at most this many fragments per second. */
+    public static final int MAX_FRAGMENTS_PER_SECOND = 1000;
+    public static final int MAX_FRAGMENTS = MAX_DURATION_SECONDS * MAX_FRAGMENTS_PER_SECOND;
 
     private static final class Shower {
         final UUID center;
-        int remaining;
+        final int total;
+        final long startTick;
+        /** 0 = natural pacing (random 1–4 s gaps); otherwise spread {@link #total} evenly over this many ticks. */
+        final int durationTicks;
+        int spawned;
         long nextTick;
 
-        Shower(UUID center, int remaining, long nextTick) {
+        Shower(UUID center, int total, long startTick, int durationTicks) {
             this.center = center;
-            this.remaining = remaining;
-            this.nextTick = nextTick;
+            this.total = total;
+            this.startTick = startTick;
+            this.durationTicks = durationTicks;
+            this.nextTick = startTick;
+        }
+
+        /** How many fragments should have fallen by {@code now} (always at least 1 per due step). */
+        int due(long now) {
+            if (durationTicks <= 0) {
+                return now >= nextTick ? spawned + 1 : spawned;
+            }
+            long elapsed = now - startTick + 1;
+            return (int) Math.min(total, Math.ceil((double) total * elapsed / durationTicks));
         }
     }
 
@@ -63,7 +88,7 @@ public final class MoonShowers {
                 if (level.random.nextDouble() < Config.SHOWER_CHANCE_PER_NIGHT.get()) {
                     // Start at a random point in the first half of the night so it isn't always at dusk.
                     long delay = level.random.nextInt((int) (MoonTime.NIGHT_LENGTH / 2));
-                    start(level, null, now + delay);
+                    start(level, null, now + delay, randomCount(level.random), 0);
                 }
             }
         }
@@ -71,7 +96,11 @@ public final class MoonShowers {
         Iterator<Shower> it = state.showers.iterator();
         while (it.hasNext()) {
             Shower shower = it.next();
-            if (now < shower.nextTick) {
+            if (now < shower.startTick) {
+                continue;
+            }
+            int due = shower.due(now);
+            if (due <= shower.spawned) {
                 continue;
             }
             ServerPlayer center = level.getServer().getPlayerList().getPlayer(shower.center);
@@ -84,31 +113,41 @@ public final class MoonShowers {
                 }
                 center = replacement;
             }
-            MoonFragmentSpawner.spawnNear(level, center.blockPosition(), level.random);
-            shower.remaining--;
+            // At high rates several fall in one tick. A spot with no valid landing still counts, so the shower ends on time.
+            while (shower.spawned < due) {
+                MoonFragmentSpawner.spawnNear(level, center.blockPosition(), level.random);
+                shower.spawned++;
+            }
             shower.nextTick = now + MIN_GAP_TICKS + level.random.nextInt(MAX_GAP_TICKS - MIN_GAP_TICKS + 1);
-            if (shower.remaining <= 0) {
+            if (shower.spawned >= shower.total) {
                 it.remove();
             }
         }
     }
 
+    /** A natural shower's size: between the configured min and max fragments. */
+    public static int randomCount(RandomSource random) {
+        int min = Config.SHOWER_MIN_FRAGMENTS.getAsInt();
+        int max = Math.max(min, Config.SHOWER_MAX_FRAGMENTS.getAsInt());
+        return min + random.nextInt(max - min + 1);
+    }
+
     /**
      * Schedules a shower.
      * @param center the player to centre it on, or null to pick by crowd size
+     * @param count how many fragments fall
+     * @param durationTicks 0 for natural pacing (random 1–4 s gaps), otherwise spread evenly over this many ticks
      * @return the player it's centred on, or null if there are no eligible players
      */
-    public static @Nullable ServerPlayer start(ServerLevel level, @Nullable ServerPlayer center, long startTick) {
+    public static @Nullable ServerPlayer start(ServerLevel level, @Nullable ServerPlayer center, long startTick, int count,
+            int durationTicks) {
         if (center == null) {
             center = pickCenter(level, level.random);
             if (center == null) {
                 return null;
             }
         }
-        int min = Config.SHOWER_MIN_FRAGMENTS.getAsInt();
-        int max = Math.max(min, Config.SHOWER_MAX_FRAGMENTS.getAsInt());
-        int count = min + level.random.nextInt(max - min + 1);
-        level.getData(ModAttachments.SHOWER_STATE).showers.add(new Shower(center.getUUID(), count, startTick));
+        level.getData(ModAttachments.SHOWER_STATE).showers.add(new Shower(center.getUUID(), count, startTick, durationTicks));
         if (Config.SHOWER_ANNOUNCE.getAsBoolean()) {
             Component message = Component.translatable("message.moonfragments.shower").withStyle(ChatFormatting.AQUA, ChatFormatting.ITALIC);
             for (ServerPlayer player : level.players()) {

@@ -4,7 +4,9 @@ import me.bendy.moonfragments.entity.FallingMoonFragment;
 import me.bendy.moonfragments.spawn.MoonFragmentSpawner;
 import me.bendy.moonfragments.spawn.MoonShowers;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import com.mojang.brigadier.exceptions.Dynamic3CommandExceptionType;
 import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
 
 import net.minecraft.commands.CommandSourceStack;
@@ -20,7 +22,8 @@ import net.minecraft.world.level.levelgen.Heightmap;
 
 /**
  * {@code /moonfragments call}: a fragment falls near you, following the normal landing rules.<br>
- * {@code /moonfragments call <x> <z>}: a fragment falls exactly on that column, ignoring the rules.
+ * {@code /moonfragments call <x> <z>}: a fragment falls exactly on that column, ignoring the rules.<br>
+ * {@code /moonfragments shower [count] [seconds]}: a shower centred on you (see {@link #shower(CommandSourceStack, int, int)}).
  * Works at any time of day. Needs permission level 2 (gamemaster).
  */
 public final class MoonFragmentsCommand {
@@ -28,6 +31,8 @@ public final class MoonFragmentsCommand {
             Component.translatable("commands.moonfragments.call.no_spot"));
     private static final SimpleCommandExceptionType NO_PLAYERS = new SimpleCommandExceptionType(
             Component.translatable("commands.moonfragments.shower.no_players"));
+    private static final Dynamic3CommandExceptionType TOO_FAST = new Dynamic3CommandExceptionType(
+            (count, seconds, limit) -> Component.translatable("commands.moonfragments.shower.too_fast", count, seconds, limit));
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("moonfragments")
@@ -37,19 +42,55 @@ public final class MoonFragmentsCommand {
                         .then(Commands.argument("pos", ColumnPosArgument.columnPos())
                                 .executes(ctx -> callAt(ctx.getSource(), ColumnPosArgument.getColumnPos(ctx, "pos")))))
                 .then(Commands.literal("shower")
-                        .executes(ctx -> shower(ctx.getSource()))));
+                        .executes(ctx -> shower(ctx.getSource()))
+                        .then(Commands.argument("count", IntegerArgumentType.integer(1, MoonShowers.MAX_FRAGMENTS))
+                                .executes(ctx -> {
+                                    int count = IntegerArgumentType.getInteger(ctx, "count");
+                                    // As long as that many fragments take today on average, capped at the max duration.
+                                    int ticks = (int) Math.min((long) count * MoonShowers.AVERAGE_GAP_TICKS,
+                                            MoonShowers.MAX_DURATION_SECONDS * 20L);
+                                    return shower(ctx.getSource(), count, ticks);
+                                })
+                                .then(Commands.argument("seconds", IntegerArgumentType.integer(1, MoonShowers.MAX_DURATION_SECONDS))
+                                        .executes(ctx -> shower(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "count"),
+                                                IntegerArgumentType.getInteger(ctx, "seconds") * 20))))));
     }
 
-    /** Starts a shower now, centred on the calling player (or the biggest crowd if run from the console). */
+    /** {@code /moonfragments shower}: a natural shower (configured size, 1–4 s apart), centred on the caller. */
     private static int shower(CommandSourceStack source) throws CommandSyntaxException {
         ServerLevel level = source.getLevel();
-        ServerPlayer caller = source.getPlayer();
-        ServerPlayer center = MoonShowers.start(level, caller, level.getGameTime());
+        ServerPlayer center = MoonShowers.start(level, source.getPlayer(), level.getGameTime(),
+                MoonShowers.randomCount(level.random), 0);
         if (center == null) {
             throw NO_PLAYERS.create();
         }
         source.sendSuccess(() -> Component.translatable("commands.moonfragments.shower.success", center.getDisplayName()), true);
         return 1;
+    }
+
+    /**
+     * {@code /moonfragments shower <count> [seconds]}: {@code count} fragments spread evenly over {@code ticks}.
+     * With only a count, the duration is what that many fragments take on average today (count × 2.5 s), capped at
+     * {@value MoonShowers#MAX_DURATION_SECONDS} s. The rate is capped at {@value MoonShowers#MAX_FRAGMENTS_PER_SECOND}
+     * per second.
+     */
+    private static int shower(CommandSourceStack source, int count, int ticks) throws CommandSyntaxException {
+        float seconds = ticks / 20.0F;
+        if (count > seconds * MoonShowers.MAX_FRAGMENTS_PER_SECOND) {
+            throw TOO_FAST.create(count, formatSeconds(seconds), MoonShowers.MAX_FRAGMENTS_PER_SECOND);
+        }
+        ServerLevel level = source.getLevel();
+        ServerPlayer center = MoonShowers.start(level, source.getPlayer(), level.getGameTime(), count, ticks);
+        if (center == null) {
+            throw NO_PLAYERS.create();
+        }
+        source.sendSuccess(() -> Component.translatable("commands.moonfragments.shower.success_sized",
+                count, formatSeconds(seconds), center.getDisplayName()), true);
+        return 1;
+    }
+
+    private static String formatSeconds(float seconds) {
+        return seconds == Math.floor(seconds) ? Integer.toString((int) seconds) : Float.toString(seconds);
     }
 
     private static int callNearPlayer(CommandSourceStack source) throws CommandSyntaxException {
