@@ -7,6 +7,7 @@ import java.util.Map;
 
 import org.joml.Vector3f;
 
+import me.bendy.moonfragments.MoonFragments;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
@@ -64,6 +65,8 @@ public final class SkirtMesh {
     private final ModelPart part;
     private float lastFront = Float.NaN;
     private float lastBack = Float.NaN;
+    /** Set if the polygon-slot approach fails; the skirt then stays in its last pose. */
+    private boolean disabled;
 
     // Per-frame scratch, reused to avoid allocation.
     private final Vector3f[] turned = {new Vector3f(), new Vector3f(), new Vector3f(), new Vector3f()};
@@ -76,11 +79,22 @@ public final class SkirtMesh {
         for (int i = 0; i < cubesNeeded; i++) {
             cubes.add(new ModelPart.Cube(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 1, 1, EnumSet.allOf(Direction.class)));
         }
-        // Blank the slots the mesh doesn't use; they are never touched again.
-        for (int slot = quads.size(); slot < cubes.size() * 6; slot++) {
-            cubes.get(slot / 6).polygons[slot % 6] = EMPTY;
-        }
         this.part = new ModelPart(cubes, Map.of());
+        // Fail-safe: this relies on each cube exposing six writable polygon slots. Check that once, then draw the rest
+        // pose; if anything is off, warn once and leave the skirt static instead of failing every frame.
+        try {
+            for (ModelPart.Cube cube : cubes) {
+                if (cube.polygons.length != 6) {
+                    throw new IllegalStateException("expected 6 polygon slots per cube, found " + cube.polygons.length);
+                }
+            }
+            for (int slot = quads.size(); slot < cubes.size() * 6; slot++) {
+                cubes.get(slot / 6).polygons[slot % 6] = EMPTY; // unused slots, never touched again
+            }
+            update(0.0F, 0.0F);
+        } catch (RuntimeException e) {
+            disable(e);
+        }
     }
 
     public ModelPart part() {
@@ -93,14 +107,25 @@ public final class SkirtMesh {
      * @param back swing of the rear-most leg (positive = back), radians
      */
     public void update(float front, float back) {
-        if (front == lastFront && back == lastBack) {
+        if (disabled || (front == lastFront && back == lastBack)) {
             return;
         }
         lastFront = front;
         lastBack = back;
-        for (int slot = 0; slot < quads.size(); slot++) {
-            cubes.get(slot / 6).polygons[slot % 6] = turnQuad(quads.get(slot), front, back);
+        try {
+            for (int slot = 0; slot < quads.size(); slot++) {
+                cubes.get(slot / 6).polygons[slot % 6] = turnQuad(quads.get(slot), front, back);
+            }
+        } catch (RuntimeException e) {
+            disable(e);
         }
+    }
+
+    /** Stops animating (the skirt keeps whatever pose it last had) and logs once. */
+    private void disable(RuntimeException cause) {
+        disabled = true;
+        MoonFragments.LOGGER.warn("Moon fragment dress/skirt animation disabled; the skirt will stay in its last pose. "
+                + "This usually means a Minecraft update or another rendering mod changed model internals.", cause);
     }
 
     private ModelPart.Polygon turnQuad(Quad quad, float front, float back) {
