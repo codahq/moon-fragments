@@ -119,6 +119,9 @@ Claude can and does generate this mod's art and models. Use these methods, and r
 - When committing work tied to an issue, update that issue with implementation notes (what changed, why, commit SHA) in the same step:
   - staying open: `gh issue comment <n> -R codahq/moon-fragments -F <file>` (or `-b "..."`)
   - closing: `gh issue close <n> -R codahq/moon-fragments -c "..."`. `gh issue close` has no `-F`, so for a long note run `gh issue comment -F` first, then `gh issue close`.
+- Never mention push status ("local", "not yet pushed") in issue/PR text: comments are permanent, push status isn't, and it goes stale.
+- Don't add "Build passes" or "not yet checked in game" to issue notes. A passing build is the baseline, and test status goes stale. Only note verification when it proves the fix itself.
+- When asked to edit existing issue text or comments, edit in place (`gh issue edit`, `gh api -X PATCH .../issues/comments/<id>`); never post new comments for it.
 - Close an issue only when the user says so.
 - In issue/PR text, write a bare `@name` only for a real login you mean to notify; put placeholders and code in backticks.
 
