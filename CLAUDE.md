@@ -41,6 +41,8 @@ This workstation's system `JAVA_HOME` is **Java 8**. Never change the system JAV
   - Rejected 1: stretching tiers looked like a box ("igloo cooler").
   - Rejected 2: rigid front/back hinged panels split open at the sides.
 - **Enchantments:** Shrinksh (-10% `minecraft:scale`) and Growge (+10%). Armor only, one level each. Each armor slot adds its own modifier, so four pieces give ±40% and mixed pieces cancel. Both can't go on the same piece.
+  - Where they appear is configurable per spot in `moonfragments-common.toml` (enchanting table, random loot, librarian books, villager armor, mob spawn armor). The enchanting table and villager armor default to off; the rest default to on. They join those vanilla tags via `#minecraft:non_treasure`. `SizeEnchantmentPack` is a hidden, always-on, in-memory data pack that writes `remove` entries for disabled spots, so `/reload` applies changes. COMMON, not SERVER: tags build before the server config loads.
+  - **No mixins.** Use events and data packs; a mixin is a last resort and needs the user's OK first.
 - **Lighting (#3):** LambDynamicLights as an optional client dependency, never bundled (its license forbids it). JSON in `assets/moonfragments/dynamiclights/`:
   - Item files: fragment 12, gear 9. These cover held items, dropped items and item frames.
   - Entity files: falling fragment 15, and worn armor 7 per slot via `equipment` predicates on players, armor stands and armor-wearing mobs.

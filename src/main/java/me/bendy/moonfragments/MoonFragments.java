@@ -2,6 +2,7 @@ package me.bendy.moonfragments;
 
 import org.slf4j.Logger;
 
+import me.bendy.moonfragments.data.SizeEnchantmentPack;
 import me.bendy.moonfragments.registry.ModAttachments;
 import me.bendy.moonfragments.registry.ModCreativeTabs;
 import me.bendy.moonfragments.registry.ModEntities;
@@ -24,5 +25,7 @@ public class MoonFragments {
         ModAttachments.register(modEventBus);
         ModCreativeTabs.register(modEventBus);
         modContainer.registerConfig(ModConfig.Type.SERVER, Config.SPEC);
+        modContainer.registerConfig(ModConfig.Type.COMMON, CommonConfig.SPEC);
+        modEventBus.addListener(SizeEnchantmentPack::addPackFinders);
     }
 }
