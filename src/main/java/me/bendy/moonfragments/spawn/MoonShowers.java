@@ -18,7 +18,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.RandomSource;
 
 /**
- * Moon fragment showers (issue #4): about once every 5 nights, 15–20 fragments fall over a minute or so.
+ * Moon fragment showers (issue #4): by default about once every 20 nights, 15–20 fragments fall over a minute or so.
  * One shower per world, not per player, in addition to the normal nightly falls.
  * <p>
  * The centre is picked by weighted random: each player's weight is the square of the number of players near them, so

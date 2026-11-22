@@ -29,8 +29,8 @@ public final class Config {
     }
 
     public static final ModConfigSpec.DoubleValue FRAGMENTS_PER_NIGHT = BUILDER
-            .comment("Average fragments per player per night. It's a random roll each tick, so some nights get more or fewer.")
-            .defineInRange("fragmentsPerNight", 4.0, 0.0, 100.0);
+            .comment("0.5 = about a 50% chance each night for 1 fragment to fall per player")
+            .defineInRange("fragmentsPerNight", 0.5, 0.0, 100.0);
 
     public static final ModConfigSpec.IntValue MIN_SPAWN_DISTANCE = BUILDER
             .comment("Minimum horizontal distance from the player. Keep it above 15 so the beacon shows before the fragment is revealed.")
@@ -46,8 +46,8 @@ public final class Config {
     }
 
     public static final ModConfigSpec.DoubleValue SHOWER_CHANCE_PER_NIGHT = BUILDER
-            .comment("Chance each night of a shower. 0.2 is about once every 5 nights.")
-            .defineInRange("chancePerNight", 0.2, 0.0, 1.0);
+            .comment("0.05 = about a 5% chance of a shower each night")
+            .defineInRange("chancePerNight", 0.05, 0.0, 1.0);
 
     public static final ModConfigSpec.IntValue SHOWER_MIN_FRAGMENTS = BUILDER
             .comment("Fewest fragments in a shower.")
