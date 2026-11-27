@@ -5,9 +5,12 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 
+import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
-import me.bendy.moonfragments.MoonFragments;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
@@ -22,8 +25,11 @@ import net.minecraft.util.Mth;
  * smoothly between them, so the skirt never splits open.
  * <p>
  * The rest-pose quads (corners, UVs, ring depths, outward directions) are computed once; each frame only turns the
- * corners, and nothing is rebuilt while the leg angles are unchanged. {@link ModelPart} is final, so the mesh lives in
- * a pool of blank cubes whose polygon slots are rewritten; unused slots get a zero-size polygon that draws nothing.
+ * corners, and nothing is recomputed while the leg angles are unchanged. {@link ModelPart} is final, so the mesh is
+ * drawn by a {@link ModelPart.Cube} subclass whose {@code compile} writes the quads itself. Overriding {@code compile}
+ * (rather than rewriting a cube's polygon slots) matters for Sodium and its forks: they patch {@code Cube.compile} to
+ * draw every cube from the box size it was constructed with, ignoring its polygons. An override never runs that
+ * patched code.
  */
 public final class SkirtMesh {
     /** Legs (and the skirt) pivot on this line, in body pixels. */
@@ -52,49 +58,33 @@ public final class SkirtMesh {
     private record Quad(float[][] corners, float[][] uvs, float[] hz, Vector3f outward) {
     }
 
-    private static final ModelPart.Polygon EMPTY = new ModelPart.Polygon(new ModelPart.Vertex[] {
-            new ModelPart.Vertex(0, 0, 0, 0, 0), new ModelPart.Vertex(0, 0, 0, 0, 0),
-            new ModelPart.Vertex(0, 0, 0, 0, 0), new ModelPart.Vertex(0, 0, 0, 0, 0)}, new Vector3f(0, 1, 0));
     /** Model space has y pointing down, so "up" is -y. */
     private static final Vector3f UP = new Vector3f(0, -1, 0);
     private static final Vector3f[] FACE_OUTWARD = {
             new Vector3f(0, 0, -1), new Vector3f(1, 0, 0), new Vector3f(0, 0, 1), new Vector3f(-1, 0, 0)};
 
     private final List<Quad> quads;
-    private final List<ModelPart.Cube> cubes = new ArrayList<>();
     private final ModelPart part;
     private float lastFront = Float.NaN;
     private float lastBack = Float.NaN;
-    /** Set if the polygon-slot approach fails; the skirt then stays in its last pose. */
-    private boolean disabled;
+
+    /** Current (turned) corner positions in block units: quad * 12 + corner * 3 + axis. */
+    private final float[] positions;
+    /** Current normal per quad: quad * 3 + axis. */
+    private final float[] normals;
 
     // Per-frame scratch, reused to avoid allocation.
     private final Vector3f[] turned = {new Vector3f(), new Vector3f(), new Vector3f(), new Vector3f()};
+    private final Vector3f normal = new Vector3f();
     private final Vector3f edgeB = new Vector3f();
     private final Vector3f expected = new Vector3f();
 
     public SkirtMesh(Spec spec) {
         this.quads = buildQuads(spec);
-        int cubesNeeded = (quads.size() + 5) / 6;
-        for (int i = 0; i < cubesNeeded; i++) {
-            cubes.add(new ModelPart.Cube(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 1, 1, EnumSet.allOf(Direction.class)));
-        }
-        this.part = new ModelPart(cubes, Map.of());
-        // Fail-safe: this relies on each cube exposing six writable polygon slots. Check that once, then draw the rest
-        // pose; if anything is off, warn once and leave the skirt static instead of failing every frame.
-        try {
-            for (ModelPart.Cube cube : cubes) {
-                if (cube.polygons.length != 6) {
-                    throw new IllegalStateException("expected 6 polygon slots per cube, found " + cube.polygons.length);
-                }
-            }
-            for (int slot = quads.size(); slot < cubes.size() * 6; slot++) {
-                cubes.get(slot / 6).polygons[slot % 6] = EMPTY; // unused slots, never touched again
-            }
-            update(0.0F, 0.0F);
-        } catch (RuntimeException e) {
-            disable(e);
-        }
+        this.positions = new float[quads.size() * 12];
+        this.normals = new float[quads.size() * 3];
+        this.part = new ModelPart(List.of(new SkirtCube()), Map.of());
+        update(0.0F, 0.0F);
     }
 
     public ModelPart part() {
@@ -107,28 +97,17 @@ public final class SkirtMesh {
      * @param back swing of the rear-most leg (positive = back), radians
      */
     public void update(float front, float back) {
-        if (disabled || (front == lastFront && back == lastBack)) {
+        if (front == lastFront && back == lastBack) {
             return;
         }
         lastFront = front;
         lastBack = back;
-        try {
-            for (int slot = 0; slot < quads.size(); slot++) {
-                cubes.get(slot / 6).polygons[slot % 6] = turnQuad(quads.get(slot), front, back);
-            }
-        } catch (RuntimeException e) {
-            disable(e);
+        for (int q = 0; q < quads.size(); q++) {
+            turnQuad(q, quads.get(q), front, back);
         }
     }
 
-    /** Stops animating (the skirt keeps whatever pose it last had) and logs once. */
-    private void disable(RuntimeException cause) {
-        disabled = true;
-        MoonFragments.LOGGER.warn("Moon fragment dress/skirt animation disabled; the skirt will stay in its last pose. "
-                + "This usually means a Minecraft update or another rendering mod changed model internals.", cause);
-    }
-
-    private ModelPart.Polygon turnQuad(Quad quad, float front, float back) {
+    private void turnQuad(int q, Quad quad, float front, float back) {
         float angleSum = 0;
         for (int i = 0; i < 4; i++) {
             float[] c = quad.corners()[i];
@@ -137,8 +116,7 @@ public final class SkirtMesh {
             turn(c[0], c[1], c[2], angle, turned[i]);
         }
         // Normal from the turned quad, pointing the same way as the rest-pose outward direction turned with it.
-        // (Each polygon keeps its own normal, so this one vector is allocated per quad.)
-        Vector3f normal =new Vector3f(turned[2]).sub(turned[0]).cross(edgeB.set(turned[3]).sub(turned[1]));
+        normal.set(turned[2]).sub(turned[0]).cross(edgeB.set(turned[3]).sub(turned[1]));
         turnDirection(quad.outward(), angleSum / 4, expected);
         if (normal.lengthSquared() < 1.0E-8F) {
             normal.set(expected);
@@ -148,12 +126,45 @@ public final class SkirtMesh {
                 normal.negate();
             }
         }
-        ModelPart.Vertex[] vertices = new ModelPart.Vertex[4];
+        normals[q * 3] = normal.x;
+        normals[q * 3 + 1] = normal.y;
+        normals[q * 3 + 2] = normal.z;
         for (int i = 0; i < 4; i++) {
-            Vector3f p = turned[i];
-            vertices[i] = new ModelPart.Vertex(p.x, p.y, p.z, quad.uvs()[i][0], quad.uvs()[i][1]);
+            int p = q * 12 + i * 3;
+            positions[p] = turned[i].x / ModelPart.Vertex.SCALE_FACTOR;
+            positions[p + 1] = turned[i].y / ModelPart.Vertex.SCALE_FACTOR;
+            positions[p + 2] = turned[i].z / ModelPart.Vertex.SCALE_FACTOR;
         }
-        return new ModelPart.Polygon(vertices, normal);
+    }
+
+    /**
+     * Draws the skirt quads. Built as an empty box (no polygons), so anything that reads cube geometry sees nothing,
+     * and {@code compile} is overridden so renderers that patch {@code Cube.compile} (Sodium) never take over.
+     */
+    private final class SkirtCube extends ModelPart.Cube {
+        private final Vector3f scratch = new Vector3f();
+
+        SkirtCube() {
+            super(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 1, 1, EnumSet.noneOf(Direction.class));
+        }
+
+        @Override
+        public void compile(PoseStack.Pose pose, VertexConsumer buffer, int packedLight, int packedOverlay, int color) {
+            Matrix4f matrix = pose.pose();
+            for (int q = 0; q < quads.size(); q++) {
+                Vector3f n = pose.transformNormal(normals[q * 3], normals[q * 3 + 1], normals[q * 3 + 2], scratch);
+                float nx = n.x();
+                float ny = n.y();
+                float nz = n.z();
+                float[][] uvs = quads.get(q).uvs();
+                for (int i = 0; i < 4; i++) {
+                    int p = q * 12 + i * 3;
+                    Vector3f v = matrix.transformPosition(positions[p], positions[p + 1], positions[p + 2], scratch);
+                    buffer.addVertex(v.x(), v.y(), v.z(), color, uvs[i][0], uvs[i][1], packedOverlay, packedLight,
+                            nx, ny, nz);
+                }
+            }
+        }
     }
 
     // ---- Rest-pose construction (once per garment) ----
