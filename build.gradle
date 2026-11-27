@@ -27,7 +27,7 @@ sourceSets.main.resources {
 }
 
 repositories {
-    // Modrinth maven, only for the mods we test against in dev (LambDynamicLights, Xaero's Minimap).
+    // Modrinth maven, only for the mods we test against in dev (LambDynamicLights, Xaero's Minimap, Sodium).
     exclusiveContent {
         forRepository {
             maven {
@@ -136,6 +136,10 @@ dependencies {
     // Xaero's Minimap (dev runs only, never bundled): to check the falling fragment's radar icon. No API use; the
     // icon comes from MoonFragmentIconModel, which every minimap mod reads the same way.
     localRuntime "maven.modrinth:xaeros-minimap:${xaeros_minimap_version}"
+
+    // Sodium (dev runs only, never bundled): it replaces vanilla model-cube rendering, which once hid the dress and
+    // skirt meshes (see SkirtMesh). Run with it to check they still render.
+    localRuntime "maven.modrinth:sodium:${sodium_version}"
 
     // Example optional mod dependency with JEI
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime
