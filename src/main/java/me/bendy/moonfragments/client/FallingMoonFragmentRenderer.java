@@ -9,9 +9,9 @@ import com.mojang.math.Axis;
 
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.blockentity.BeaconRenderer;
-import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
-import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import net.minecraft.client.renderer.entity.LivingEntityRenderer;
+import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import net.minecraft.client.renderer.item.ItemModelResolver;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.renderer.rendertype.RenderType;
@@ -25,8 +25,18 @@ import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.AABB;
 
-public class FallingMoonFragmentRenderer extends EntityRenderer<FallingMoonFragment, FallingMoonFragmentRenderer.State> {
+import org.jspecify.annotations.Nullable;
+
+/**
+ * Draws the falling light, the beacon and the fragment by hand. It's a {@link LivingEntityRenderer} only so minimap mods
+ * can find {@link MoonFragmentIconModel} through {@code getModel()}. The model itself is never drawn (see
+ * {@link #getRenderType}).
+ */
+public class FallingMoonFragmentRenderer
+        extends LivingEntityRenderer<FallingMoonFragment, FallingMoonFragmentRenderer.State, MoonFragmentIconModel> {
     private static final Identifier GLOW_TEXTURE = Identifier.fromNamespaceAndPath(MoonFragments.MODID, "textures/entity/moon_glow.png");
+    /** The sheet minimap mods texture the icon plate with. */
+    private static final Identifier ICON_TEXTURE = Identifier.fromNamespaceAndPath(MoonFragments.MODID, "textures/entity/moon_fragment_icon.png");
     private static final RenderType GLOW = RenderTypes.entityTranslucentEmissive(GLOW_TEXTURE);
     /** Pale blue-white, matching the fragment colour. */
     private static final int GLOW_COLOR = 0xFFE6F0FF;
@@ -37,14 +47,15 @@ public class FallingMoonFragmentRenderer extends EntityRenderer<FallingMoonFragm
     private final ItemStack fragmentStack = new ItemStack(ModItems.MOON_FRAGMENT.get());
 
     public FallingMoonFragmentRenderer(EntityRendererProvider.Context context) {
-        super(context);
+        // Baked inline: the icon model never animates or reloads, it only has to exist for minimap mods.
+        super(context, new MoonFragmentIconModel(MoonFragmentIconModel.createLayer().bakeRoot()), 0.15F);
         this.itemModelResolver = context.getItemModelResolver();
-        this.shadowRadius = 0.15F;
     }
 
-    public static class State extends EntityRenderState {
+    public static class State extends LivingEntityRenderState {
         public FallingMoonFragment.Stage stage = FallingMoonFragment.Stage.FALLING;
-        public float yRot;
+        /** Yaw the fragment rolls along ({@code yRot} on a living render state is the head's yaw). */
+        public float facing;
         /** Current displayed tilt in degrees, including the reveal roll. */
         public float tilt;
         public final ItemStackRenderState item = new ItemStackRenderState();
@@ -59,7 +70,7 @@ public class FallingMoonFragmentRenderer extends EntityRenderer<FallingMoonFragm
     public void extractRenderState(FallingMoonFragment entity, State state, float partialTick) {
         super.extractRenderState(entity, state, partialTick);
         state.stage = entity.getStage();
-        state.yRot = entity.getYRot(partialTick);
+        state.facing = entity.getYRot(partialTick);
         // Roll end over end (one full turn, easing out) and come to rest at the entity's chosen tilt.
         float progress = entity.getRollProgress(partialTick);
         float eased = 1.0F - (1.0F - progress) * (1.0F - progress) * (1.0F - progress);
@@ -69,6 +80,24 @@ public class FallingMoonFragmentRenderer extends EntityRenderer<FallingMoonFragm
         } else {
             state.item.clear();
         }
+    }
+
+    /** Skips the icon model in the world; the living-entity pass still runs, so name tags and leashes work. */
+    @Override
+    protected @Nullable RenderType getRenderType(State state, boolean visible, boolean translucent, boolean glowing) {
+        return null;
+    }
+
+    @Override
+    public Identifier getTextureLocation(State state) {
+        return ICON_TEXTURE;
+    }
+
+    /** Only a custom name shows, as on mobs: {@code LivingEntityRenderer} alone would label every fragment. */
+    @Override
+    protected boolean shouldShowName(FallingMoonFragment entity, double distanceToCameraSq) {
+        return super.shouldShowName(entity, distanceToCameraSq)
+                && (entity.shouldShowName() || entity.hasCustomName() && entity == this.entityRenderDispatcher.crosshairPickEntity);
     }
 
     /** The fragment is its own light: always full-bright. */
@@ -102,7 +131,7 @@ public class FallingMoonFragmentRenderer extends EntityRenderer<FallingMoonFragm
                     AABB box = state.item.getModelBoundingBox();
                     poseStack.pushPose();
                     poseStack.translate(0.0F, restingLift(box, state.tilt), 0.0F);
-                    poseStack.mulPose(Axis.YP.rotationDegrees(-state.yRot));
+                    poseStack.mulPose(Axis.YP.rotationDegrees(-state.facing));
                     poseStack.mulPose(Axis.XP.rotationDegrees(state.tilt));
                     poseStack.translate(0.0F, (float) -box.minY, 0.0F);
                     state.item.submit(poseStack, collector, state.lightCoords, OverlayTexture.NO_OVERLAY, state.outlineColor);

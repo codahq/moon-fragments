@@ -27,7 +27,7 @@ sourceSets.main.resources {
 }
 
 repositories {
-    // Modrinth maven, only for the mods we test against in dev (LambDynamicLights).
+    // Modrinth maven, only for the mods we test against in dev (LambDynamicLights, Xaero's Minimap).
     exclusiveContent {
         forRepository {
             maven {
@@ -132,6 +132,10 @@ dependencies {
     // LambDynamicLights (optional, client-side): our items/entity glow through its JSON files in
     // assets/moonfragments/dynamiclights/. Loaded in dev runs only; not bundled (its license forbids redistribution).
     localRuntime "maven.modrinth:lambdynamiclights:${lambdynamiclights_version}"
+
+    // Xaero's Minimap (dev runs only, never bundled): to check the falling fragment's radar icon. No API use; the
+    // icon comes from MoonFragmentIconModel, which every minimap mod reads the same way.
+    localRuntime "maven.modrinth:xaeros-minimap:${xaeros_minimap_version}"
 
     // Example optional mod dependency with JEI
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime

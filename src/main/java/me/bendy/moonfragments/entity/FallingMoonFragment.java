@@ -19,7 +19,11 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySelector;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.HumanoidArm;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MoverType;
+import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
+import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Explosion;
@@ -28,6 +32,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.fluids.FluidType;
 
 /**
  * A moon fragment falling from the night sky (issue #1).
@@ -37,8 +42,13 @@ import net.minecraft.world.phys.Vec3;
  * <li>{@link Stage#FRAGMENT}: when a player comes within {@value #REVEAL_RADIUS} blocks, the beacon is replaced by the
  * collectible fragment (right-click to pick up). It melts away after {@value #MELT_TICKS} ticks of daylight.</li>
  * </ol>
+ *
+ * <p><b>Why a {@link LivingEntity}:</b> minimap mods (Xaero's, JourneyMap, VoxelMap) only build a radar icon for an
+ * entity whose renderer is a {@code LivingEntityRenderer}, by reading its model's head. A plain {@code Entity} never
+ * shows up. This isn't a creature, though: like an armor stand it has no AI, can't be hurt, pushed or given effects,
+ * and runs its own physics in {@link #travel}. The icon model is {@code MoonFragmentIconModel}.
  */
-public class FallingMoonFragment extends Entity {
+public class FallingMoonFragment extends LivingEntity {
     public enum Stage { FALLING, BEACON, FRAGMENT }
 
     public static final double REVEAL_RADIUS = 15.0;
@@ -67,6 +77,12 @@ public class FallingMoonFragment extends Entity {
 
     public FallingMoonFragment(EntityType<? extends FallingMoonFragment> type, Level level) {
         super(type, level);
+        // Invulnerable also keeps mobs that hunt any living thing (wardens) from targeting it.
+        setInvulnerable(true);
+    }
+
+    public static AttributeSupplier.Builder createAttributes() {
+        return LivingEntity.createLivingAttributes();
     }
 
     /** Starts a fragment falling in a straight line at a constant velocity (it can come in at an angle). */
@@ -115,6 +131,7 @@ public class FallingMoonFragment extends Entity {
 
     @Override
     protected void defineSynchedData(SynchedEntityData.Builder builder) {
+        super.defineSynchedData(builder);
         builder.define(DATA_STAGE, Stage.FALLING.ordinal());
         builder.define(DATA_TILT, 0.0F);
         builder.define(DATA_REVEAL_TIME, Long.MIN_VALUE / 2); // long ago: no roll animation
@@ -139,13 +156,14 @@ public class FallingMoonFragment extends Entity {
         return 0.08;
     }
 
+    /**
+     * Replaces living-entity movement with the fragment's own physics. The falling stage flies in a straight line at
+     * constant velocity (so angled entries hit the chosen spot); later stages settle with gravity and ground friction.
+     * Runs on the server; clients interpolate to the synced position like any living entity.
+     */
     @Override
-    public void tick() {
-        super.tick();
+    public void travel(Vec3 input) {
         Stage stage = getStage();
-
-        // Physics: the falling stage flies in a straight line at constant velocity (so angled entries hit the
-        // chosen spot); later stages settle with gravity and ground friction.
         if (stage != Stage.FALLING) {
             if (!onGround()) {
                 applyGravity();
@@ -155,12 +173,19 @@ public class FallingMoonFragment extends Entity {
                 setDeltaMovement(motion.x, -MAX_FALL_SPEED, motion.z);
             }
         }
+        resetFallDistance(); // impact() is the landing effect: no fall damage or landing dust
         move(MoverType.SELF, getDeltaMovement());
         if (onGround()) {
             setDeltaMovement(getDeltaMovement().multiply(0.6, 0.0, 0.6));
         } else if (stage != Stage.FALLING) {
             setDeltaMovement(getDeltaMovement().multiply(0.98, 1.0, 0.98));
         }
+    }
+
+    @Override
+    public void tick() {
+        super.tick(); // moves via travel()
+        Stage stage = getStage();
 
         if (level().isClientSide()) {
             spawnAmbientParticles(stage);
@@ -334,6 +359,50 @@ public class FallingMoonFragment extends Entity {
         return true;
     }
 
+    /** {@code /kill} on a living entity goes through {@link #hurtServer}, which refuses everything; remove it outright. */
+    @Override
+    public void kill(ServerLevel level) {
+        remove(RemovalReason.KILLED);
+        gameEvent(GameEvent.ENTITY_DIE);
+    }
+
+    // Not a creature: none of the living-entity side effects apply.
+
+    @Override
+    public HumanoidArm getMainArm() {
+        return HumanoidArm.RIGHT;
+    }
+
+    @Override
+    public boolean isPushable() {
+        return false;
+    }
+
+    @Override
+    protected void pushEntities() {
+    }
+
+    @Override
+    public boolean isAffectedByPotions() {
+        return false;
+    }
+
+    @Override
+    public boolean causeFallDamage(double fallDistance, float multiplier, DamageSource source) {
+        return false;
+    }
+
+    /** No drowning bubbles when it lands in water. */
+    @Override
+    public boolean canDrownInFluidType(FluidType type) {
+        return false;
+    }
+
+    @Override
+    public boolean canFreeze() {
+        return false;
+    }
+
     /** Visible from far away so the beacon can be spotted across the landscape. */
     @Override
     public boolean shouldRenderAtSqrDistance(double distance) {
@@ -343,6 +412,7 @@ public class FallingMoonFragment extends Entity {
 
     @Override
     protected void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
         entityData.set(DATA_STAGE, Math.clamp(input.getIntOr("Stage", Stage.BEACON.ordinal()), 0, Stage.values().length - 1));
         stageTicks = input.getIntOr("StageTicks", 0);
         daylightTicks = input.getIntOr("DaylightTicks", 0);
@@ -352,6 +422,7 @@ public class FallingMoonFragment extends Entity {
 
     @Override
     protected void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
         output.putInt("Stage", getStage().ordinal());
         output.putInt("StageTicks", stageTicks);
         output.putInt("DaylightTicks", daylightTicks);
